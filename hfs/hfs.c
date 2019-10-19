@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -256,6 +257,159 @@ void cmd_getattr(Volume* volume, int argc, const char *argv[]) {
 	free(record);
 }
 
+// Copied from https://stackoverflow.com/a/122721
+// Note: This function returns a pointer to a substring of the original string.
+// If the given string was allocated dynamically, the caller must not overwrite
+// that pointer with the returned value, since the original pointer must be
+// deallocated using the same allocator with which it was allocated.  The return
+// value must NOT be deallocated using free() etc.
+char *trim_whitespace(char *str) {
+	if (str == NULL) {
+		return NULL;
+	}
+
+	char *end;
+
+	// Trim leading space
+	while(isspace((unsigned char)*str)) str++;
+
+	// All spaces?
+	if(*str == 0) {
+		return str;
+	}
+
+	// Trim trailing space
+	end = str + strlen(str) - 1;
+	while(end > str && isspace((unsigned char)*end)) end--;
+
+	// Write new null terminator character
+	end[1] = '\0';
+
+	return str;
+}
+
+int getFlagOpt(char* flagOptStr, uint16_t* flagOptOut) {
+	if(strcmp(flagOptStr, "HasCustomIcon") == 0) {
+		*flagOptOut = kHasCustomIcon;
+	} else if(strcmp(flagOptStr, "IsStationary") == 0) {
+		*flagOptOut = kIsStationery;
+	} else if(strcmp(flagOptStr, "NameLocked") == 0) {
+		*flagOptOut = kNameLocked;
+	} else if(strcmp(flagOptStr, "HasBundle") == 0) {
+		*flagOptOut = kHasBundle;
+	} else if(strcmp(flagOptStr, "IsInvisible") == 0) {
+		*flagOptOut = kIsInvisible;
+	} else if(strcmp(flagOptStr, "IsAlias") == 0) {
+		*flagOptOut = kIsAlias;
+	} else {
+		return 1;
+	}
+	return 0;
+}
+
+static const char SET_FINDER_FLAGS_USAGE[] = "usage: setfinderflags /path/to/my/file +HasCustomIcon,-HasBundle\n";
+static const char FINDER_FLAGS_DELIM = ',';
+static const uint16_t FILE_ONLY_FLAGS = (kIsStationery & kHasBundle & kIsAlias);
+
+int cmd_setfinderflags(Volume* volume, int argc, const char *argv[]) {
+	HFSPlusCatalogRecord* record;
+
+	if(argc < 2) {
+		printf("Please specify the file/folder path to set finder flags on\n");
+		printf(SET_FINDER_FLAGS_USAGE);
+		return 1;
+	}
+
+	if(argc < 3) {
+		printf("Please specify the finder flags to set %d\n", argc);
+		printf(SET_FINDER_FLAGS_USAGE);
+		return 1;
+	}
+
+	record = getRecordFromPath(argv[1], volume, NULL, NULL);
+
+	if(record == NULL) {
+		printf("No such file or directory\n");
+		free(record);
+		return 1;
+	}
+
+    int isFolder = 0;
+	uint16_t recordFinderFlags;
+	if (record->recordType == kHFSPlusFileRecord) {
+		recordFinderFlags = ((HFSPlusCatalogFile*)record)->userInfo.finderFlags;
+	} else {
+		isFolder = 1;
+		recordFinderFlags = ((HFSPlusCatalogFolder*)record)->userInfo.finderFlags;
+	}
+
+	uint16_t flagOptsUsed = 0x0000;
+
+	char* flagOptsStr = strdup(argv[2]);
+	char *flagOptStr;
+
+	flagOptStr = trim_whitespace(strtok(flagOptsStr, &FINDER_FLAGS_DELIM));
+	while (flagOptStr) {
+		if (flagOptStr[0] != '\0' && flagOptStr[0] != '-' && flagOptStr[0] != '+') {
+			printf("Invalid flag option '%s'. Please prefix each flag with either '+' to set the flag or '-' to clear the flag\n", flagOptStr);
+			printf(SET_FINDER_FLAGS_USAGE);
+			free(flagOptsStr);
+			free(record);
+			return 1;
+		}
+
+		if (flagOptStr[0] != '\0') {
+			uint16_t flagOpt;
+			int res = getFlagOpt(flagOptStr + 1, &flagOpt);
+
+			if (res != 0) {
+				printf("Unrecognized finder flag '%s'. Supported flags: HasCustomIcon, IsStationary, NameLocked, HasBundle, IsInvisible, IsAlias\n", flagOptStr);
+				printf(SET_FINDER_FLAGS_USAGE);
+				free(flagOptsStr);
+				free(record);
+				return 1;
+			}
+
+			if (flagOpt) {
+				if (isFolder && (flagOpt & FILE_ONLY_FLAGS)) {
+					printf("Cannot set flag %s on folder '%s' since is only supported on files\n", flagOptStr + 1, argv[1]);
+					printf(SET_FINDER_FLAGS_USAGE);
+					free(flagOptsStr);
+					free(record);
+					return 1;
+				}
+
+				if (flagOptsUsed & flagOpt) {
+					printf("Please remove duplicate occurrence of flag: %s\n", flagOptStr + 1);
+					printf(SET_FINDER_FLAGS_USAGE);
+					free(flagOptsStr);
+					free(record);
+					return 1;
+				}
+				flagOptsUsed |= flagOpt;
+
+				if (flagOptStr[0] == '+') {
+					recordFinderFlags |= flagOpt;
+				} else {
+					recordFinderFlags &= ~flagOpt;
+				}
+			}
+		}
+		flagOptStr = trim_whitespace(strtok(NULL, &FINDER_FLAGS_DELIM));
+	}
+
+	if (record->recordType == kHFSPlusFileRecord) {
+		((HFSPlusCatalogFile*)record)->userInfo.finderFlags = recordFinderFlags;
+	} else {
+		((HFSPlusCatalogFolder*)record)->userInfo.finderFlags = recordFinderFlags;
+	}
+
+	updateCatalog(volume, record);
+	free(flagOptsStr);
+	free(record);
+	return 0;
+}
+
 void TestByteOrder()
 {
 	short int word = 0x0001;
@@ -263,7 +417,7 @@ void TestByteOrder()
 	endianness = byte[0] ? IS_LITTLE_ENDIAN : IS_BIG_ENDIAN;
 }
 
-static const char TOOL_USAGE[] = "usage: %s <image-file> <ls|cat|mv|mkdir|add|rm|chmod|extract|extractall|rmall|addall|getattr|debug> <arguments>\n";
+static const char TOOL_USAGE[] = "usage: %s <image-file> <ls|cat|mv|mkdir|add|rm|chmod|extract|extractall|rmall|addall|getattr|setfinderflags|debug> <arguments>\n";
 
 int main(int argc, const char *argv[]) {
 	io_func* io;
@@ -319,6 +473,8 @@ int main(int argc, const char *argv[]) {
 		cmd_grow(volume, argc - 2, argv + 2);
 	} else if(strcmp(argv[2], "getattr") == 0) {
 		cmd_getattr(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "setfinderflags") == 0) {
+		result = cmd_setfinderflags(volume, argc - 2, argv + 2);
 	} else if(strcmp(argv[2], "debug") == 0) {
 		if(argc > 3 && strcmp(argv[3], "verbose") == 0) {
 			debugBTree(volume->catalogTree, TRUE);
