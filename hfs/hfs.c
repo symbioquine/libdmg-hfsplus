@@ -263,6 +263,7 @@ void TestByteOrder()
 	endianness = byte[0] ? IS_LITTLE_ENDIAN : IS_BIG_ENDIAN;
 }
 
+static const char TOOL_USAGE[] = "usage: %s <image-file> <ls|cat|mv|mkdir|add|rm|chmod|extract|extractall|rmall|addall|getattr|debug> <arguments>\n";
 
 int main(int argc, const char *argv[]) {
 	io_func* io;
@@ -271,8 +272,9 @@ int main(int argc, const char *argv[]) {
 	TestByteOrder();
 	
 	if(argc < 3) {
-		printf("usage: %s <image-file> <ls|cat|mv|mkdir|add|rm|chmod|extract|extractall|rmall|addall|debug> <arguments>\n", argv[0]);
-		return 0;
+		printf("%s: Please specify an image file and command\n", argv[0]);
+		printf(TOOL_USAGE, argv[0]);
+		return 1;
 	}
 	
 	io = openFlatFile(argv[1]);
@@ -287,47 +289,50 @@ int main(int argc, const char *argv[]) {
 		CLOSE(io);
 		return 1;
 	}
-	
-	if(argc > 1) {
-		if(strcmp(argv[2], "ls") == 0) {
-			cmd_ls(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "cat") == 0) {
-			cmd_cat(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "mv") == 0) {
-			cmd_mv(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "symlink") == 0) {
-			cmd_symlink(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "mkdir") == 0) {
-			cmd_mkdir(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "add") == 0) {
-			cmd_add(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "rm") == 0) {
-			cmd_rm(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "chmod") == 0) {
-			cmd_chmod(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "extract") == 0) {
-			cmd_extract(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "extractall") == 0) {
-			cmd_extractall(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "rmall") == 0) {
-			cmd_rmall(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "addall") == 0) {
-			cmd_addall(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "grow") == 0) {
-			cmd_grow(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "getattr") == 0) {
-			cmd_getattr(volume, argc - 2, argv + 2);
-		} else if(strcmp(argv[2], "debug") == 0) {
-			if(argc > 3 && strcmp(argv[3], "verbose") == 0) {
-				debugBTree(volume->catalogTree, TRUE);
-			} else {
-				debugBTree(volume->catalogTree, FALSE);
-			}
+
+	int result = 0;
+	if(strcmp(argv[2], "ls") == 0) {
+		cmd_ls(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "cat") == 0) {
+		cmd_cat(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "mv") == 0) {
+		cmd_mv(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "symlink") == 0) {
+		cmd_symlink(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "mkdir") == 0) {
+		cmd_mkdir(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "add") == 0) {
+		cmd_add(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "rm") == 0) {
+		cmd_rm(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "chmod") == 0) {
+		cmd_chmod(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "extract") == 0) {
+		cmd_extract(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "extractall") == 0) {
+		cmd_extractall(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "rmall") == 0) {
+		cmd_rmall(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "addall") == 0) {
+		cmd_addall(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "grow") == 0) {
+		cmd_grow(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "getattr") == 0) {
+		cmd_getattr(volume, argc - 2, argv + 2);
+	} else if(strcmp(argv[2], "debug") == 0) {
+		if(argc > 3 && strcmp(argv[3], "verbose") == 0) {
+			debugBTree(volume->catalogTree, TRUE);
+		} else {
+			debugBTree(volume->catalogTree, FALSE);
 		}
+	} else {
+		printf("%s: Please specify a supported command\n", argv[0]);
+		printf(TOOL_USAGE, argv[0]);
+		result = 1;
 	}
 	
 	closeVolume(volume);
 	CLOSE(io);
 	
-	return 0;
+	return result;
 }
