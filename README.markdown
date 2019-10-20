@@ -31,6 +31,8 @@ conventions. The dmg portion has dependencies on the fairly ubiquitous zlib.
 
 * **Ubuntu:** `sudo apt-get install build-essential cmake`
 * **Archlinux:** `sudo pacman -S git make clang cmake`
+* **Fedora:** `sudo dnf install git make cmake clang zlib-devel`
+* **Opensuse:** `sudo zypper install git cmake gcc clang binutils zlib-devel`
 
 ## Build
 
